@@ -368,7 +368,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
           },
         },
       };
-      final base = gateway.replaceFirst(RegExp(r'/+
+      final base = gateway.replaceFirst(RegExp('/+$'), '');
       final response = await http.post(
         Uri.parse('$base/api/generate'),
         headers: {'Content-Type': 'application/json'},
