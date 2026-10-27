@@ -16,7 +16,7 @@ const defaultModels = {
 };
 const allowedModels = {
   image: new Set([
-    'gpt-image-2-text-to-image', 'gpt-image-2-5-flare-text-to-image',
+    'gpt-image-2-text-to-image', 'gpt-image-2-image-to-image', 'gpt-image-2-5-flare-text-to-image',
     'nano-banana-2', 'nano-banana-2-1', ...(process.env.KIE_IMAGE_MODEL ? [process.env.KIE_IMAGE_MODEL] : []),
   ]),
   video: new Set([
