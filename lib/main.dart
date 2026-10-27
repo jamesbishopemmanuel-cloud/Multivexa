@@ -125,7 +125,9 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     'Low Poly', 'Paper Cutout', 'Claymation', 'Isometric', 'Surrealism',
     'Concept Art', 'Children’s Book Illustration'
   ];
-  static const imageRatios = ['auto', '1:1', '9:16', '16:9', '4:3', '3:4', '3:2', '2:3'];
+  List<String> get availableImageRatios => imageModel == 'gpt-image-2-5-flare-text-to-image'
+      ? ['3:2']
+      : ['auto', '1:1', '9:16', '16:9', '4:3', '3:4'];
   static const imageModels = <String, String>{
     'GPT Image 2': 'gpt-image-2-text-to-image',
     'GPT Image 2.5 Flare': 'gpt-image-2-5-flare-text-to-image',
@@ -345,7 +347,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         isExpanded: true,
         decoration: const InputDecoration(prefixIcon: Icon(Icons.auto_awesome), labelText: 'Choose image model'),
         items: imageModels.entries.map((entry) => DropdownMenuItem(value: entry.value, child: Text(entry.key))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() { imageModel = value; imageRatio = 'auto'; imageResolution = '1K'; }); },
+        onChanged: busy ? null : (value) { if (value != null) setState(() { imageModel = value; imageRatio = value == 'gpt-image-2-5-flare-text-to-image' ? '3:2' : 'auto'; imageResolution = '1K'; }); },
       ),
       const SizedBox(height: 12),
       const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -364,7 +366,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         value: imageRatio,
         isExpanded: true,
         decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Image dimensions'),
-        items: (imageModel == 'gpt-image-2-text-to-image' || imageModel == 'gpt-image-2-5-flare-text-to-image' ? imageRatios : ['auto', '1:1', '9:16', '16:9', '4:3', '3:4']).map((ratio) => DropdownMenuItem(
+        items: availableImageRatios.map((ratio) => DropdownMenuItem(
           value: ratio,
           child: Text(ratio == 'auto' ? 'Auto' : ratio),
         )).toList(),
