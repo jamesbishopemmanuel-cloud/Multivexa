@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const gateway = String.fromEnvironment('MULTIVEXA_API_URL', defaultValue: 'http://10.0.2.2:8080');
@@ -174,6 +175,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   List<String> get imageResolutions => imageRatio == 'auto'
       ? ['1K']
       : imageRatio == '1:1' ? ['1K', '2K'] : ['1K', '2K', '4K'];
+  String? _pendingPaymentRef;
+  bool paymentBusy = false;
   Timer? _statusTimer;
   Timer? _progressTimer;
   static const types = ['Image', 'Video', 'Music'];
@@ -198,6 +201,64 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   }
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); _progressTimer?.cancel(); prompt.dispose(); audioRecorder.dispose(); super.dispose(); }
+
+  Future<void> startTopUp(String pack) async {
+    final user = db.auth.currentUser;
+    final token = user == null ? null : db.auth.currentSession?.accessToken;
+    if (token == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in before purchasing credits.'))); return; }
+    setState(() => paymentBusy = true);
+    try {
+      final base = gateway.replaceFirst(RegExp(r'/+$'), '');
+      final response = await http.post(Uri.parse('$base/api/payments/checkout'), headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}, body: jsonEncode({'pack': pack})).timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'Could not start checkout.');
+      final url = Uri.tryParse(data['checkoutUrl']?.toString() ?? '');
+      if (url == null || !url.isScheme('https')) throw Exception('Flutterwave returned an invalid checkout URL.');
+      _pendingPaymentRef = data['txRef']?.toString();
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) throw Exception('Could not open Flutterwave checkout.');
+      if (mounted) await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('Complete your payment'),
+        content: const Text('Finish payment in Flutterwave, return to Multivexa, then tap Verify payment to add your credits.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Later')), FilledButton(onPressed: () { Navigator.pop(dialogContext); verifyTopUp(); }, child: const Text('Verify payment'))],
+      ));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Flutterwave checkout failed: $e')));
+    } finally { if (mounted) setState(() => paymentBusy = false); }
+  }
+
+  Future<void> verifyTopUp() async {
+    final txRef = _pendingPaymentRef;
+    final token = db.auth.currentSession?.accessToken;
+    if (txRef == null || token == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Start a credit purchase first.'))); return; }
+    setState(() => paymentBusy = true);
+    try {
+      final base = gateway.replaceFirst(RegExp(r'/+$'), '');
+      final response = await http.post(Uri.parse('$base/api/payments/verify'), headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}, body: jsonEncode({'txRef': txRef})).timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'Payment is not verified yet.');
+      final added = (data['credits'] as num?)?.toInt() ?? 0;
+      if (added <= 0) throw Exception('Verified payment did not include credits.');
+      if (!mounted) return;
+      setState(() { credits += added; _pendingPaymentRef = null; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verified. $added credits added.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verification: $e')));
+    } finally { if (mounted) setState(() => paymentBusy = false); }
+  }
+
+  Future<void> showTopUpOptions() async {
+    await showModalBottomSheet<void>(context: context, isScrollControlled: true, backgroundColor: panel, builder: (sheetContext) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('Buy AI credits', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 8),
+      const Text('Secure checkout powered by Flutterwave. Prices are in Nigerian naira.', style: TextStyle(color: Colors.white70)), const SizedBox(height: 16),
+      _packButton(sheetContext, 'starter', 'Starter', '₦1,500', '100 credits'),
+      _packButton(sheetContext, 'creator', 'Creator', '₦5,000', '400 credits'),
+      _packButton(sheetContext, 'studio', 'Studio', '₦10,000', '900 credits'),
+      if (_pendingPaymentRef != null) OutlinedButton.icon(onPressed: paymentBusy ? null : () { Navigator.pop(sheetContext); verifyTopUp(); }, icon: const Icon(Icons.verified_outlined), label: const Text('Verify previous payment')),
+    ]))));
+  }
+
+  Widget _packButton(BuildContext sheetContext, String pack, String title, String price, String detail) => Padding(padding: const EdgeInsets.only(bottom: 10), child: FilledButton.tonal(onPressed: paymentBusy ? null : () { Navigator.pop(sheetContext); startTopUp(pack); }, child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), Text(detail)])), Text(price, style: const TextStyle(fontWeight: FontWeight.w800))]))));
+
 
   void updateEstimatedProgress() {
     if (!mounted || history.isEmpty) return;
@@ -488,7 +549,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
-      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
+      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Buy credits with Flutterwave', onPressed: paymentBusy ? null : showTopUpOptions, icon: const Icon(Icons.account_balance_wallet_outlined)), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
     body: SafeArea(child: tab == 0 ? createView() : historyView()),
     bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
       destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
