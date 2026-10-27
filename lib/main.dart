@@ -229,7 +229,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     final ext = path.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     final storagePath = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.${ext.isEmpty ? 'm4a' : ext}';
     await db.storage.from('music-inputs').upload(storagePath, file, fileOptions: const FileOptions(upsert: false));
-    final url = db.storage.from('music-inputs').getPublicUrl(storagePath);
+    final signed = await db.storage.from('music-inputs').createSignedUrl(storagePath, 3600);
+    final url = signed;
     if (mounted) setState(() => voicePublicUrl = url);
     return url;
   }
