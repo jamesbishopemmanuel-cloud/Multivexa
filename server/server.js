@@ -66,6 +66,7 @@ async function supabaseRpc(name, body) {
 app.post('/api/payments/checkout', async (req, res) => {
   try {
     if (!FLW_SECRET_KEY) return res.status(503).json({ error: 'Flutterwave is not configured on the server.' });
+    if (!process.env.PUBLIC_API_URL) return res.status(503).json({ error: 'PUBLIC_API_URL must be set to the deployed API origin.' });
     const user = await authenticateSupabase(req);
     if (!user) return res.status(401).json({ error: 'Sign in to purchase credits.' });
     const pack = creditPacks[req.body?.pack];
@@ -92,6 +93,8 @@ app.post('/api/payments/checkout', async (req, res) => {
   }
 });
 
+app.get('/api/payments/callback', (_req, res) => res.type('html').send('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multivexa payment</title></head><body style="font-family:system-ui;max-width:560px;margin:15vh auto;padding:24px"><h2>Payment page returned</h2><p>Return to Multivexa AI and tap <b>Verify payment</b>. Credits are only added after the server verifies the transaction.</p></body></html>'));
+
 app.post('/api/payments/verify', async (req, res) => {
   try {
     if (!FLW_SECRET_KEY) return res.status(503).json({ error: 'Flutterwave is not configured on the server.' });
@@ -117,11 +120,11 @@ app.post('/api/payments/verify', async (req, res) => {
     if (!pack || Number(payment.amount) < pack.amount || String(payment.customer?.email || '').toLowerCase() !== user.email.toLowerCase()) {
       return res.status(402).json({ error: 'Payment amount or customer details do not match the credit pack.' });
     }
-    await supabaseRpc('credit_multivexa_wallet', {
+    const wallet = await supabaseRpc('credit_multivexa_wallet', {
       p_user_id: user.id, p_tx_ref: txRef, p_transaction_id: String(payment.id),
       p_amount_ngn: pack.amount, p_credits: pack.credits,
     });
-    res.json({ status: 'success', credits: pack.credits, amount: pack.amount, txRef });
+    res.json({ status: wallet?.credited ? 'success' : 'already_processed', credits: wallet?.credited ? pack.credits : 0, balance: wallet?.credits ?? null, amount: pack.amount, txRef });
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Could not verify payment.' });
   }
