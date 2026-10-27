@@ -1,13 +1,10 @@
 name: Build Multivexa Android APK
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   build-apk:
     name: Build release APK
@@ -15,33 +12,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
       - name: Generate Android platform files
         run: flutter create . --platforms=android --org com.multivexa --project-name multivexa
-
       - name: Install dependencies
         run: flutter pub get
-
       - name: Analyze source (non-blocking during initial setup)
         continue-on-error: true
         run: flutter analyze
-
       - name: Build universal release APK
         env:
           MULTIVEXA_API_URL: ${{ vars.MULTIVEXA_API_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          if [ -n "$MULTIVEXA_API_URL" ]; then
-            flutter build apk --release --dart-define=MULTIVEXA_API_URL="$MULTIVEXA_API_URL"
-          else
-            flutter build apk --release
-          fi
-
+          flutter build apk --release \
+            --dart-define=MULTIVEXA_API_URL="$MULTIVEXA_API_URL" \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
