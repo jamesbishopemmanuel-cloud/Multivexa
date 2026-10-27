@@ -36,8 +36,9 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const creditPacks = {
   starter: { amount: 1500, credits: 100 },
-  creator: { amount: 5000, credits: 400 },
-  studio: { amount: 10000, credits: 900 },
+  creator: { amount: 5000, credits: 300 },
+  studio: { amount: 10000, credits: 800 },
+  mega: { amount: 13600, credits: 1000 },
 };
 
 async function authenticateSupabase(req) {
