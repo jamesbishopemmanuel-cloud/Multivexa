@@ -348,7 +348,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         onChanged: busy ? null : (value) { if (value != null) setState(() { imageModel = value; imageRatio = 'auto'; imageResolution = '1K'; }); },
       ),
       const SizedBox(height: 12),
-      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         value: imageStyle,
