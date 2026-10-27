@@ -221,6 +221,26 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     return signed;
   }
 
+  Future<void> chooseVideoInput() async {
+    final result = await FilePicker.platform.pickFiles(type: videoMode == 'Image to video' ? FileType.image : FileType.video, withData: false);
+    if (result == null || result.files.single.path == null || !mounted) return;
+    setState(() { videoInputPath = result.files.single.path; videoInputName = result.files.single.name; videoInputSignedUrl = null; });
+  }
+
+  Future<String> uploadVideoInput() async {
+    if (videoInputSignedUrl != null) return videoInputSignedUrl!;
+    final path = videoInputPath;
+    if (path == null) throw Exception('Choose a source file first.');
+    final user = db.auth.currentUser;
+    if (user == null) throw Exception('Sign in before uploading a source file.');
+    final ext = path.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final storagePath = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.${ext.isEmpty ? (videoMode == 'Image to video' ? 'png' : 'mp4') : ext}';
+    await db.storage.from('video-inputs').upload(storagePath, File(path), fileOptions: const FileOptions(upsert: false));
+    final signed = await db.storage.from('video-inputs').createSignedUrl(storagePath, 3600);
+    if (mounted) setState(() => videoInputSignedUrl = signed);
+    return signed;
+  }
+
   Future<void> chooseVoiceFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac'], withData: false);
     if (result == null || result.files.single.path == null || !mounted) return;
