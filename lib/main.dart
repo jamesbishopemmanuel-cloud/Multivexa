@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -125,6 +129,10 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   String? voiceFilePath, voiceFileName, voicePublicUrl;
   bool recordingVoice = false;
   final AudioRecorder audioRecorder = AudioRecorder();
+  String musicModel = 'V6', musicVoiceMode = 'AI Voice', musicTitle = 'My New Track', musicStyle = 'Afrobeats';
+  String? voiceFilePath, voiceFileName, voicePublicUrl;
+  bool recordingVoice = false;
+  final AudioRecorder audioRecorder = AudioRecorder();
   static const imageStyles = [
     'Photorealistic', 'Cinematic', 'Anime', '3D Render', 'Digital Art',
     'Watercolor', 'Oil Painting', 'Pencil Sketch', 'Comic Book', 'Fantasy',
@@ -157,6 +165,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     'Architectural Visualization', 'Watercolor Animation', 'Comic Book'
   ];
   static const videoRatios = ['16:9', '9:16', '1:1'];
+  static const musicModels = <String, String>{'Suno V6': 'V6', 'Suno V6 Mini': 'V6_MINI', 'Suno V6 Wild': 'V6_WILD'};
+  static const musicStyles = ['Afrobeats', 'Afro-pop', 'Amapiano', 'R&B', 'Pop', 'Hip-hop', 'Rap', 'Gospel', 'Highlife', 'Reggae', 'Dancehall', 'EDM', 'House', 'Jazz', 'Soul', 'Rock', 'Country', 'Classical', 'Cinematic', 'Lo-fi', 'Acoustic', 'Orchestral', 'Ambient', 'Drill', 'Afro-fusion', 'Funk'];
   static const musicModels = <String, String>{
     'Suno V6': 'V6', 'Suno V6 Mini': 'V6_MINI', 'Suno V6 Wild': 'V6_WILD',
   };
