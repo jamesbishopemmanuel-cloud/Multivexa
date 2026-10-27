@@ -25,8 +25,8 @@ with check (auth.uid() = user_id);
 
 
 insert into storage.buckets (id, name, public)
-values ('music-inputs', 'music-inputs', true)
-on conflict (id) do update set public = true;
+values ('music-inputs', 'music-inputs', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "Users can upload their own music inputs" on storage.objects;
 create policy "Users can upload their own music inputs"
