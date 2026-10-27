@@ -128,10 +128,6 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   String? voiceFilePath, voiceFileName, voicePublicUrl;
   bool recordingVoice = false;
   final AudioRecorder audioRecorder = AudioRecorder();
-  String musicModel = 'V6', musicVoiceMode = 'AI Voice', musicTitle = 'My New Track', musicStyle = 'Afrobeats';
-  String? voiceFilePath, voiceFileName, voicePublicUrl;
-  bool recordingVoice = false;
-  final AudioRecorder audioRecorder = AudioRecorder();
   static const imageStyles = [
     'Photorealistic', 'Cinematic', 'Anime', '3D Render', 'Digital Art',
     'Watercolor', 'Oil Painting', 'Pencil Sketch', 'Comic Book', 'Fantasy',
