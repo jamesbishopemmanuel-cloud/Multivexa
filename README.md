@@ -23,7 +23,7 @@ Deploy this repository to Render as a web service with **Root Directory** set to
    - `SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable/anon key, used to validate signed-in users.
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role key, server-side only; never add it to Flutter, GitHub commits, or client build variables.
 3. Deploy the server, then build the app with `MULTIVEXA_API_URL` set to the same HTTPS Render origin.
-4. The app offers ₦1,500 / 100 credits, ₦5,000 / 400 credits, and ₦10,000 / 900 credits. Payment is credited only after the backend verifies the Flutterwave transaction.
+4. The app offers ₦1,500 / 100 credits, ₦5,000 / 300 credits, ₦10,000 / 800 credits, and ₦13,600 / 1,000 credits. Payment is credited only after the backend verifies the Flutterwave transaction.
 
 Never commit or paste Flutterwave secret keys into the app or GitHub source. If a secret key has already been shared in a chat, rotate it in the Flutterwave dashboard before deploying.
 
