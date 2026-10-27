@@ -120,6 +120,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   bool busy = false, loading = true;
   String imageStyle = 'Photorealistic', imageRatio = 'auto', imageResolution = '1K';
   String imageModel = 'gpt-image-2-text-to-image';
+  String imageMode = 'Text to image';
+  String? imageInputPath, imageInputName, imageInputSignedUrl;
   String videoModel = 'kling-3.0/video', videoStyle = 'Cinematic', videoRatio = '16:9', videoDuration = '5', videoQuality = '720p';
   String musicModel = 'V6', musicVoiceMode = 'AI Voice', musicTitle = 'My New Track', musicStyle = 'Afrobeats';
   String? voiceFilePath, voiceFileName, voicePublicUrl;
@@ -191,6 +193,31 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   }
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); prompt.dispose(); audioRecorder.dispose(); super.dispose(); }
+
+  Future<void> chooseImageInput() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: false);
+    if (result == null || result.files.single.path == null || !mounted) return;
+    setState(() {
+      imageInputPath = result.files.single.path;
+      imageInputName = result.files.single.name;
+      imageInputSignedUrl = null;
+    });
+  }
+
+  Future<String> uploadImageInput() async {
+    if (imageInputSignedUrl != null) return imageInputSignedUrl!;
+    final path = imageInputPath;
+    if (path == null) throw Exception('Choose an image before using image-to-image.');
+    final user = db.auth.currentUser;
+    if (user == null) throw Exception('Sign in before uploading an image.');
+    final file = File(path);
+    final ext = path.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final storagePath = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.${ext.isEmpty ? 'png' : ext}';
+    await db.storage.from('image-inputs').upload(storagePath, file, fileOptions: const FileOptions(upsert: false));
+    final signed = await db.storage.from('image-inputs').createSignedUrl(storagePath, 3600);
+    if (mounted) setState(() => imageInputSignedUrl = signed);
+    return signed;
+  }
 
   Future<void> chooseVoiceFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac'], withData: false);
@@ -296,6 +323,16 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       );
       return;
     }
+    if (mode == 0 && imageMode == 'Image to image') {
+      if (imageInputPath == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose a source image for image-to-image.')));
+        return;
+      }
+      if (imageModel == 'gpt-image-2-5-flare-text-to-image') {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPT Image 2.5 Flare currently supports text-to-image here. Choose GPT Image 2 or Nano Banana for image editing.')));
+        return;
+      }
+    }
     if (credits < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Out of demo credits.')),
@@ -313,11 +350,16 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         'type': types[mode].toLowerCase(),
         'prompt': effectivePrompt,
         if (mode == 0) ...{
-          'model': imageModel,
+          'model': imageMode == 'Image to image' && imageModel == 'gpt-image-2-text-to-image'
+              ? 'gpt-image-2-image-to-image' : imageModel,
           'input': {
             'aspect_ratio': imageRatio,
             'resolution': imageResolution,
             if (imageModel == 'nano-banana-2' || imageModel == 'nano-banana-2-1') 'output_format': 'png',
+            if (imageMode == 'Image to image' && imageModel == 'gpt-image-2-text-to-image')
+              'input_urls': [await uploadImageInput()],
+            if (imageMode == 'Image to image' && (imageModel == 'nano-banana-2' || imageModel == 'nano-banana-2-1'))
+              'image_input': [await uploadImageInput()],
           },
         },
         if (mode == 1) ...{
@@ -416,6 +458,32 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
     const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
     if (mode == 0) ...[
+      const Text('Generation mode', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: imageMode,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.layers_outlined), labelText: 'Text-to-image or image-to-image'),
+        items: const [
+          DropdownMenuItem(value: 'Text to image', child: Text('Text to image — create from a prompt')),
+          DropdownMenuItem(value: 'Image to image', child: Text('Image to image — edit a source image')),
+        ],
+        onChanged: busy ? null : (value) { if (value != null) setState(() { imageMode = value; imageInputSignedUrl = null; }); },
+      ),
+      if (imageMode == 'Image to image') ...[
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: busy ? null : chooseImageInput,
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label: Text(imageInputName == null ? 'Choose source image' : 'Change image: $imageInputName', overflow: TextOverflow.ellipsis),
+        ),
+        if (imageInputPath != null) ...[
+          const SizedBox(height: 8),
+          ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(imageInputPath!), height: 150, fit: BoxFit.contain)),
+        ],
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Upload a JPG, PNG or WebP image, then describe how you want it changed. The source is stored privately in your Supabase image-inputs bucket.', style: TextStyle(color: Colors.white54, fontSize: 12))),
+      ],
+      const SizedBox(height: 14),
       const Text('Image model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
@@ -573,7 +641,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       ],
       const SizedBox(height: 16),
     ],
-    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
+    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? (imageMode == 'Image to image' ? 'Describe the edits: change the background, add warm cinematic lighting...' : 'A cinematic futuristic city at sunset...') : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
     const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
     const SizedBox(height: 14), const Text('Supabase saves account history. Credits remain demo-only and must be enforced on the server before production.', style: TextStyle(color: Colors.white54, fontSize: 12)),
   ]);
@@ -606,256 +674,5 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
     } finally { if (mounted) setState(() => busy = false); }
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
-      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
-    body: SafeArea(child: tab == 0 ? createView() : historyView()),
-    bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
-      destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
-  );
-  Widget createView() => ListView(padding: const EdgeInsets.all(20), children: [
-    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
-      child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
-    const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
-      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
-        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
-    const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
-    const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
-    const SizedBox(height: 14), const Text('Supabase saves account history. Credits remain demo-only and must be enforced on the server before production.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-  ]);
-  Widget historyView() {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (history.isEmpty) return const Center(child: Text('Your saved creations will appear here.'));
-    return ListView.separated(padding: const EdgeInsets.all(20), itemCount: history.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) { final item = history[i]; final icon = item.type == 'Image' ? icons[0] : item.type == 'Video' ? icons[1] : icons[2];
-        return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
-          child: Row(children: [Icon(icon, color: cyan, size: 32), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${item.type} prompt', style: const TextStyle(fontWeight: FontWeight.w800)), Text(item.prompt, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
-            Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
-          ]))]));
-      });
-  }
-}
-), '');
-      final response = await http.post(
-        Uri.parse('$base/api/generate'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 45));
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
-      }
-      final taskId = data['taskId']?.toString() ?? '';
-      if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
-      final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
-      await db.from('creations').insert({
-        'user_id': db.auth.currentUser!.id,
-        'type': item.type,
-        'prompt': item.prompt,
-        'task_id': item.taskId,
-        'status': item.status,
-      });
-      if (!mounted) return;
-      setState(() {
-        credits--;
-        history.insert(0, item);
-        tab = 1;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('KIE accepted your generation task.')),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Generation or history save failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
-      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
-    body: SafeArea(child: tab == 0 ? createView() : historyView()),
-    bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
-      destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
-  );
-  Widget createView() => ListView(padding: const EdgeInsets.all(20), children: [
-    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
-      child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
-    const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
-      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
-        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
-    const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    if (mode == 0) ...[
-      const Text('Image model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        value: imageModel,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.auto_awesome), labelText: 'Choose image model'),
-        items: imageModels.entries.map((entry) => DropdownMenuItem(value: entry.value, child: Text(entry.key))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() { imageModel = value; imageRatio = value == 'gpt-image-2-5-flare-text-to-image' ? '3:2' : 'auto'; imageResolution = '1K'; }); },
-      ),
-      const SizedBox(height: 12),
-      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        value: imageStyle,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.palette_outlined), labelText: 'Choose a visual style'),
-        items: imageStyles.map((style) => DropdownMenuItem(value: style, child: Text(style))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => imageStyle = value); },
-      ),
-      const SizedBox(height: 12),
-      const Text('Aspect ratio', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        value: imageRatio,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Image dimensions'),
-        items: availableImageRatios.map((ratio) => DropdownMenuItem(
-          value: ratio,
-          child: Text(ratio == 'auto' ? 'Auto' : ratio),
-        )).toList(),
-        onChanged: busy ? null : (value) {
-          if (value != null) setState(() {
-            imageRatio = value;
-            if (!imageResolutions.contains(imageResolution)) imageResolution = '1K';
-          });
-        },
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        value: imageResolution,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.high_quality_outlined), labelText: 'Resolution'),
-        items: imageResolutions.map((resolution) => DropdownMenuItem(
-          value: resolution,
-          child: Text(resolution),
-        )).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => imageResolution = value); },
-      ),
-      const SizedBox(height: 16),
-    ],
-    if (mode == 1) ...[
-      const Text('Video model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        value: videoModel,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.movie_filter_outlined), labelText: 'Choose video model'),
-        items: videoModels.entries.map((entry) => DropdownMenuItem(value: entry.value, child: Text(entry.key))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() { videoModel = value; videoRatio = '16:9'; videoDuration = '5'; videoQuality = '720p'; }); },
-      ),
-      const SizedBox(height: 12),
-      const Text('Video style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        value: videoStyle,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.palette_outlined), labelText: 'Visual style'),
-        items: videoStyles.map((style) => DropdownMenuItem(value: style, child: Text(style))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => videoStyle = value); },
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        value: videoRatio,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Aspect ratio'),
-        items: videoRatios.map((ratio) => DropdownMenuItem(value: ratio, child: Text(ratio))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => videoRatio = value); },
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        value: videoDuration,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.timer_outlined), labelText: 'Duration'),
-        items: (videoModel == 'bytedance/seedance-2-5' ? ['5', '10', '15'] : videoModel == 'kling-3.0/video' ? ['5', '10', '15'] : ['5', '10']).map((duration) => DropdownMenuItem(value: duration, child: Text('$duration seconds'))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => videoDuration = value); },
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        value: videoQuality,
-        isExpanded: true,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.high_quality_outlined), labelText: 'Resolution / quality'),
-        items: (videoModel == 'kling-3.0/video' ? ['720p', '1080p', '4K'] : videoModel == 'runway' ? ['720p', '1080p'] : ['720p', '1080p']).map((quality) => DropdownMenuItem(value: quality, child: Text(quality))).toList(),
-        onChanged: busy ? null : (value) { if (value != null) setState(() => videoQuality = value); },
-      ),
-      const SizedBox(height: 16),
-    ],
-    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
-    const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
-    const SizedBox(height: 14), const Text('Supabase saves account history. Credits remain demo-only and must be enforced on the server before production.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-  ]);
-  Widget historyView() {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (history.isEmpty) return const Center(child: Text('Your saved creations will appear here.'));
-    return ListView.separated(padding: const EdgeInsets.all(20), itemCount: history.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) { final item = history[i]; final icon = item.type == 'Image' ? icons[0] : item.type == 'Video' ? icons[1] : icons[2];
-        return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
-          child: Row(children: [Icon(icon, color: cyan, size: 32), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${item.type} prompt', style: const TextStyle(fontWeight: FontWeight.w800)), Text(item.prompt, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
-            Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
-          ]))]));
-      });
-  }
-}
-), '')}/api/generate'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 45));
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
-      final taskId = data['taskId']?.toString() ?? '';
-      if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
-      final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
-      await db.from('creations').insert({'user_id': db.auth.currentUser!.id, 'type': item.type, 'prompt': item.prompt, 'task_id': item.taskId, 'status': item.status});
-      if (!mounted) return;
-      setState(() { credits--; history.insert(0, item); tab = 1; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KIE accepted your generation task.')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
-    } finally { if (mounted) setState(() => busy = false); }
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
-      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
-    body: SafeArea(child: tab == 0 ? createView() : historyView()),
-    bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
-      destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
-  );
-  Widget createView() => ListView(padding: const EdgeInsets.all(20), children: [
-    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
-      child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
-    const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
-      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
-        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
-    const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
-    const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
-    const SizedBox(height: 14), const Text('Supabase saves account history. Credits remain demo-only and must be enforced on the server before production.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-  ]);
-  Widget historyView() {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (history.isEmpty) return const Center(child: Text('Your saved creations will appear here.'));
-    return ListView.separated(padding: const EdgeInsets.all(20), itemCount: history.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) { final item = history[i]; final icon = item.type == 'Image' ? icons[0] : item.type == 'Video' ? icons[1] : icons[2];
-        return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
-          child: Row(children: [Icon(icon, color: cyan, size: 32), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${item.type} prompt', style: const TextStyle(fontWeight: FontWeight.w800)), Text(item.prompt, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
-            Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
-          ]))]));
-      });
   }
 }
