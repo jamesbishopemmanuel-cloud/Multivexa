@@ -529,7 +529,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
           },
         },
       };
-      final base = gateway.replaceFirst(RegExp('/+$'), '');
+      final base = gateway.replaceFirst(RegExp(r'/+, '');
       final response = await http.post(
         Uri.parse('$base/api/generate'),
         headers: {'Content-Type': 'application/json'},
@@ -580,9 +580,29 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
       child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
     const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
-    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
-      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
-        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
+    Row(
+      children: List.generate(types.length, (i) => Expanded(
+        child: Padding(
+          padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
+          child: InkWell(
+            onTap: () => setState(() => mode = i),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              decoration: BoxDecoration(
+                color: mode == i ? violet.withValues(alpha: .22) : panel,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: mode == i ? violet : Colors.white10),
+              ),
+              child: Column(children: [
+                Icon(icons[i], color: cyan, size: 28),
+                const SizedBox(height: 8),
+                Text(types[i]),
+              ]),
+            ),
+          ),
+        ),
+      )),
+    ),
     const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
     if (mode == 0) ...[
       const Text('Generation mode', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -810,23 +830,5 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
             Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
           ]))]));
       });
-  }
-}
-), '')}/api/generate'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 45));
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
-      final taskId = data['taskId']?.toString() ?? '';
-      if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
-      final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
-      await db.from('creations').insert({'user_id': db.auth.currentUser!.id, 'type': item.type, 'prompt': item.prompt, 'task_id': item.taskId, 'status': item.status});
-      if (!mounted) return;
-      setState(() { credits--; history.insert(0, item); tab = 1; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KIE accepted your generation task.')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
-    } finally { if (mounted) setState(() => busy = false); }
   }
 }
