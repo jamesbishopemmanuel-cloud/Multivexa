@@ -114,6 +114,19 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   final history = <Creation>[];
   int tab = 0, mode = 0, credits = 50;
   bool busy = false, loading = true;
+  String imageStyle = 'Photorealistic', imageRatio = 'auto', imageResolution = '1K';
+  static const imageStyles = [
+    'Photorealistic', 'Cinematic', 'Anime', '3D Render', 'Digital Art',
+    'Watercolor', 'Oil Painting', 'Pencil Sketch', 'Comic Book', 'Fantasy',
+    'Cyberpunk', 'Minimalist', 'Vector Art', 'Product Photography',
+    'Portrait Photography', 'Architecture', 'Vintage Film', 'Pixel Art',
+    'Low Poly', 'Paper Cutout', 'Claymation', 'Isometric', 'Surrealism',
+    'Concept Art', 'Children’s Book Illustration'
+  ];
+  static const imageRatios = ['auto', '1:1', '9:16', '16:9', '4:3', '3:4'];
+  List<String> get imageResolutions => imageRatio == 'auto'
+      ? ['1K']
+      : imageRatio == '1:1' ? ['1K', '2K'] : ['1K', '2K', '4K'];
   Timer? _statusTimer;
   static const types = ['Image', 'Video', 'Music'];
   static const icons = [Icons.image_outlined, Icons.movie_creation_outlined, Icons.music_note_outlined];
@@ -196,8 +209,111 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     if (credits < 1) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Out of demo credits.'))); return; }
     setState(() => busy = true);
     try {
-      final response = await http.post(Uri.parse('${gateway.replaceFirst(RegExp(r'/+$'), '')}/api/generate'),
-        headers: {'Content-Type': 'application/json'}, body: jsonEncode({'type': types[mode].toLowerCase(), 'prompt': text})).timeout(const Duration(seconds: 45));
+      final effectivePrompt = mode == 0
+          ? 'Style: $imageStyle. Create the following image in this style: $text'
+          : text;
+      final requestBody = <String, dynamic>{
+        'type': types[mode].toLowerCase(),
+        'prompt': effectivePrompt,
+        if (mode == 0)
+          'input': {
+            'aspect_ratio': imageRatio,
+            'resolution': imageResolution,
+          },
+      };
+      final response = await http.post(
+        Uri.parse('${gateway.replaceFirst(RegExp(r'/+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
+      final taskId = data['taskId']?.toString() ?? '';
+      if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
+      final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
+      await db.from('creations').insert({'user_id': db.auth.currentUser!.id, 'type': item.type, 'prompt': item.prompt, 'task_id': item.taskId, 'status': item.status});
+      if (!mounted) return;
+      setState(() { credits--; history.insert(0, item); tab = 1; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KIE accepted your generation task.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
+      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
+    body: SafeArea(child: tab == 0 ? createView() : historyView()),
+    bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
+      destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
+  );
+  Widget createView() => ListView(padding: const EdgeInsets.all(20), children: [
+    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
+      child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
+    const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
+    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
+      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
+        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
+    const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
+    if (mode == 0) ...[
+      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: imageStyle,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.palette_outlined), labelText: 'Choose a visual style'),
+        items: imageStyles.map((style) => DropdownMenuItem(value: style, child: Text(style))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => imageStyle = value); },
+      ),
+      const SizedBox(height: 12),
+      const Text('Aspect ratio', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: imageRatio,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Image dimensions'),
+        items: imageRatios.map((ratio) => DropdownMenuItem(
+          value: ratio,
+          child: Text(ratio == 'auto' ? 'Auto (1:1K only)' : ratio),
+        )).toList(),
+        onChanged: busy ? null : (value) {
+          if (value != null) setState(() {
+            imageRatio = value;
+            if (!imageResolutions.contains(imageResolution)) imageResolution = '1K';
+          });
+        },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        value: imageResolution,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.high_quality_outlined), labelText: 'Resolution'),
+        items: imageResolutions.map((resolution) => DropdownMenuItem(
+          value: resolution,
+          child: Text(resolution),
+        )).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => imageResolution = value); },
+      ),
+      const SizedBox(height: 16),
+    ],
+    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
+    const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
+    const SizedBox(height: 14), const Text('Supabase saves account history. Credits remain demo-only and must be enforced on the server before production.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+  ]);
+  Widget historyView() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (history.isEmpty) return const Center(child: Text('Your saved creations will appear here.'));
+    return ListView.separated(padding: const EdgeInsets.all(20), itemCount: history.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) { final item = history[i]; final icon = item.type == 'Image' ? icons[0] : item.type == 'Video' ? icons[1] : icons[2];
+        return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
+          child: Row(children: [Icon(icon, color: cyan, size: 32), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${item.type} prompt', style: const TextStyle(fontWeight: FontWeight.w800)), Text(item.prompt, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+            Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+          ]))]));
+      });
+  }
+}
+), '')}/api/generate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 45));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
       final taskId = data['taskId']?.toString() ?? '';
