@@ -109,7 +109,7 @@ class StudioScreen extends StatefulWidget {
   @override
   State<StudioScreen> createState() => _StudioScreenState();
 }
-class _StudioScreenState extends State<StudioScreen> {
+class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver {
   final prompt = TextEditingController();
   final history = <Creation>[];
   int tab = 0, mode = 0, credits = 50;
@@ -121,13 +121,21 @@ class _StudioScreenState extends State<StudioScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     loadHistory();
     // KIE continues running on the server if the app is backgrounded or closed.
     // Refresh task states while the app is open and again whenever history loads.
     _statusTimer = Timer.periodic(const Duration(seconds: 20), (_) => refreshTaskStatuses());
   }
   @override
-  void dispose() { _statusTimer?.cancel(); prompt.dispose(); super.dispose(); }
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      loadHistory();
+      refreshTaskStatuses();
+    }
+  }
+  @override
+  void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); prompt.dispose(); super.dispose(); }
   Future<void> loadHistory() async {
     try {
       final rows = await db.from('creations').select().order('created_at', ascending: false).limit(100);
