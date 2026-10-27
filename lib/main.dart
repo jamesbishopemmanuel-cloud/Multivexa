@@ -115,6 +115,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   int tab = 0, mode = 0, credits = 50;
   bool busy = false, loading = true;
   String imageStyle = 'Photorealistic', imageRatio = 'auto', imageResolution = '1K';
+  String imageModel = 'gpt-image-2-text-to-image';
+  String videoModel = 'kling-3.0/video', videoStyle = 'Cinematic', videoRatio = '16:9', videoDuration = '5', videoQuality = '720p';
   static const imageStyles = [
     'Photorealistic', 'Cinematic', 'Anime', '3D Render', 'Digital Art',
     'Watercolor', 'Oil Painting', 'Pencil Sketch', 'Comic Book', 'Fantasy',
@@ -123,7 +125,28 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     'Low Poly', 'Paper Cutout', 'Claymation', 'Isometric', 'Surrealism',
     'Concept Art', 'Children’s Book Illustration'
   ];
-  static const imageRatios = ['auto', '1:1', '9:16', '16:9', '4:3', '3:4'];
+  static const imageRatios = ['auto', '1:1', '9:16', '16:9', '4:3', '3:4', '3:2', '2:3'];
+  static const imageModels = <String, String>{
+    'GPT Image 2': 'gpt-image-2-text-to-image',
+    'GPT Image 2.5 Flare': 'gpt-image-2-5-flare-text-to-image',
+    'Google Nano Banana 2': 'nano-banana-2',
+    'Google Nano Banana 2.1': 'nano-banana-2-1',
+  };
+  static const videoModels = <String, String>{
+    'Kling 3.0': 'kling-3.0/video',
+    'Seedance 2.5': 'bytedance/seedance-2-5',
+    'Runway': 'runway',
+    'Kling 2.6': 'kling-2.6/text-to-video',
+  };
+  static const videoStyles = [
+    'Cinematic', 'Photorealistic', 'Anime', '3D Animation', 'Cartoon',
+    'Fantasy', 'Sci-Fi', 'Cyberpunk', 'Documentary', 'Music Video',
+    'Commercial', 'Product Showcase', 'Nature', 'Travel Film', 'Horror Atmosphere',
+    'Vintage Film', 'Stop Motion', 'Claymation', 'Pixel Art', 'Surreal',
+    'Slow Motion', 'Action', 'Dreamlike', 'Minimalist', 'Fashion Film',
+    'Architectural Visualization', 'Watercolor Animation', 'Comic Book'
+  ];
+  static const videoRatios = ['16:9', '9:16', '1:1'];
   List<String> get imageResolutions => imageRatio == 'auto'
       ? ['1K']
       : imageRatio == '1:1' ? ['1K', '2K'] : ['1K', '2K', '4K'];
@@ -221,15 +244,43 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     try {
       final effectivePrompt = mode == 0
           ? 'Style: $imageStyle. Create the following image in this style: $text'
-          : text;
+          : mode == 1
+              ? 'Visual style: $videoStyle. Create this video with the requested style and motion: $text'
+              : text;
       final requestBody = <String, dynamic>{
         'type': types[mode].toLowerCase(),
         'prompt': effectivePrompt,
-        if (mode == 0)
+        if (mode == 0) ...{
+          'model': imageModel,
           'input': {
             'aspect_ratio': imageRatio,
             'resolution': imageResolution,
+            if (imageModel == 'nano-banana-2' || imageModel == 'nano-banana-2-1') 'output_format': 'png',
           },
+        },
+        if (mode == 1) ...{
+          'model': videoModel,
+          'input': {
+            'aspect_ratio': videoRatio,
+            if (videoModel == 'kling-3.0/video') ...{
+              'duration': videoDuration,
+              'mode': videoQuality == '4K' ? '4K' : videoQuality == '1080p' ? 'pro' : 'std',
+              'sound': true,
+              'multi_shots': false,
+            } else if (videoModel == 'bytedance/seedance-2-5') ...{
+              'duration': int.parse(videoDuration),
+              'resolution': videoQuality,
+              'generate_audio': true,
+            } else if (videoModel == 'runway') ...{
+              'duration': int.parse(videoDuration),
+              'quality': videoQuality == '1080p' ? '1080p' : '720p',
+              'watermark': '',
+            } else ...{
+              'duration': int.parse(videoDuration),
+              'resolution': videoQuality,
+            },
+          },
+        },
       };
       final base = gateway.replaceFirst(RegExp(r'/+$'), '');
       final response = await http.post(
@@ -287,7 +338,17 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
     const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
     if (mode == 0) ...[
-      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const Text('Image model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: imageModel,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.auto_awesome), labelText: 'Choose image model'),
+        items: imageModels.entries.map((entry) => DropdownMenuItem(value: entry.value, child: Text(entry.key))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() { imageModel = value; imageRatio = 'auto'; imageResolution = '1K'; }); },
+      ),
+      const SizedBox(height: 12),
+      const Text('Image style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         value: imageStyle,
@@ -303,9 +364,9 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
         value: imageRatio,
         isExpanded: true,
         decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Image dimensions'),
-        items: imageRatios.map((ratio) => DropdownMenuItem(
+        items: (imageModel == 'gpt-image-2-text-to-image' || imageModel == 'gpt-image-2-5-flare-text-to-image' ? imageRatios : ['auto', '1:1', '9:16', '16:9', '4:3', '3:4']).map((ratio) => DropdownMenuItem(
           value: ratio,
-          child: Text(ratio == 'auto' ? 'Auto (1:1K only)' : ratio),
+          child: Text(ratio == 'auto' ? 'Auto' : ratio),
         )).toList(),
         onChanged: busy ? null : (value) {
           if (value != null) setState(() {
@@ -324,6 +385,52 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
           child: Text(resolution),
         )).toList(),
         onChanged: busy ? null : (value) { if (value != null) setState(() => imageResolution = value); },
+      ),
+      const SizedBox(height: 16),
+    ],
+    if (mode == 1) ...[
+      const Text('Video model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: videoModel,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.movie_filter_outlined), labelText: 'Choose video model'),
+        items: videoModels.entries.map((entry) => DropdownMenuItem(value: entry.value, child: Text(entry.key))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() { videoModel = value; videoRatio = '16:9'; videoDuration = '5'; videoQuality = '720p'; }); },
+      ),
+      const SizedBox(height: 12),
+      const Text('Video style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: videoStyle,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.palette_outlined), labelText: 'Visual style'),
+        items: videoStyles.map((style) => DropdownMenuItem(value: style, child: Text(style))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => videoStyle = value); },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        value: videoRatio,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.aspect_ratio), labelText: 'Aspect ratio'),
+        items: videoRatios.map((ratio) => DropdownMenuItem(value: ratio, child: Text(ratio))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => videoRatio = value); },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        value: videoDuration,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.timer_outlined), labelText: 'Duration'),
+        items: (videoModel == 'bytedance/seedance-2-5' ? ['5', '10', '15'] : videoModel == 'kling-3.0/video' ? ['5', '10', '15'] : ['5', '10']).map((duration) => DropdownMenuItem(value: duration, child: Text('$duration seconds'))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => videoDuration = value); },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        value: videoQuality,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.high_quality_outlined), labelText: 'Resolution / quality'),
+        items: (videoModel == 'kling-3.0/video' ? ['720p', '1080p', '4K'] : videoModel == 'runway' ? ['720p', '1080p'] : ['720p', '1080p']).map((quality) => DropdownMenuItem(value: quality, child: Text(quality))).toList(),
+        onChanged: busy ? null : (value) { if (value != null) setState(() => videoQuality = value); },
       ),
       const SizedBox(height: 16),
     ],
