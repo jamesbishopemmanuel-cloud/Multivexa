@@ -345,6 +345,10 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       );
       return;
     }
+    if (mode == 1 && videoMode != 'Text to video' && videoInputPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choose a source ${videoMode == 'Image to video' ? 'image' : 'video'} first.')));
+      return;
+    }
     if (mode == 0 && imageMode == 'Image to image') {
       if (imageInputPath == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose a source image for image-to-image.')));
@@ -388,6 +392,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
           'model': videoModel,
           'input': {
             'aspect_ratio': videoRatio,
+            if (videoMode == 'Image to video') 'image_urls': [await uploadVideoInput()],
+            if (videoMode == 'Video to video') 'video_urls': [await uploadVideoInput()],
             if (videoModel == 'kling-3.0/video') ...{
               'duration': videoDuration,
               'mode': videoQuality == '4K' ? '4K' : videoQuality == '1080p' ? 'pro' : 'std',
