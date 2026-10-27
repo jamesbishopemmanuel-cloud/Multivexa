@@ -12,7 +12,7 @@ const KIE_BASE_URL = (process.env.KIE_BASE_URL || 'https://api.kie.ai/api/v1').r
 const defaultModels = {
   image: 'gpt-image-2-text-to-image',
   video: 'kling-2.6/text-to-video',
-  music: 'sonu',
+  music: 'ai-music-api/generate',
 };
 const allowedModels = {
   image: new Set([
@@ -23,7 +23,7 @@ const allowedModels = {
     'kling-3.0/video', 'bytedance/seedance-2-5', 'runway', 'kling-2.6/text-to-video',
     ...(process.env.KIE_VIDEO_MODEL ? [process.env.KIE_VIDEO_MODEL] : []),
   ]),
-  music: new Set([process.env.KIE_MUSIC_MODEL || 'sonu']),
+  music: new Set(['ai-music-api/generate', ...(process.env.KIE_MUSIC_MODEL ? [process.env.KIE_MUSIC_MODEL] : [])]),
 };
 const models = {
   image: process.env.KIE_IMAGE_MODEL || defaultModels.image,
