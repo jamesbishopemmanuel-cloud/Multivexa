@@ -123,6 +123,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   String imageMode = 'Text to image';
   String? imageInputPath, imageInputName, imageInputSignedUrl;
   String videoModel = 'kling-3.0/video', videoStyle = 'Cinematic', videoRatio = '16:9', videoDuration = '5', videoQuality = '720p';
+  String videoMode = 'Text to video';
+  String? videoInputPath, videoInputName, videoInputSignedUrl;
   String musicModel = 'V6', musicVoiceMode = 'AI Voice', musicTitle = 'My New Track', musicStyle = 'Afrobeats';
   String? voiceFilePath, voiceFileName, voicePublicUrl;
   bool recordingVoice = false;
