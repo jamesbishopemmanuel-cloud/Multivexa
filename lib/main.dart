@@ -187,6 +187,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     loadHistory();
+    loadWalletBalance();
     // KIE continues running on the server if the app is backgrounded or closed.
     // Refresh task states while the app is open and again whenever history loads.
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) => refreshTaskStatuses());
@@ -201,6 +202,19 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   }
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); _progressTimer?.cancel(); prompt.dispose(); audioRecorder.dispose(); super.dispose(); }
+
+  Future<void> loadWalletBalance() async {
+    final token = db.auth.currentSession?.accessToken;
+    if (token == null) return;
+    try {
+      final base = gateway.replaceFirst(RegExp(r'/+$'), '');
+      final response = await http.get(Uri.parse('$base/api/wallet/balance'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final purchased = (data['credits'] as num?)?.toInt() ?? 0;
+      if (mounted) setState(() => credits = 50 + purchased);
+    } catch (_) { /* Keep the app usable if the wallet endpoint is temporarily offline. */ }
+  }
 
   Future<void> startTopUp(String pack) async {
     final user = db.auth.currentUser;
@@ -239,7 +253,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       final added = (data['credits'] as num?)?.toInt() ?? 0;
       if (added <= 0) throw Exception('Verified payment did not include credits.');
       if (!mounted) return;
-      setState(() { credits += added; _pendingPaymentRef = null; });
+      final balance = (data['balance'] as num?)?.toInt();
+      setState(() { credits = 50 + (balance ?? added); _pendingPaymentRef = null; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verified. $added credits added.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verification: $e')));
