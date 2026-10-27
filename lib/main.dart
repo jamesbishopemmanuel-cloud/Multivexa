@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -113,21 +114,123 @@ class _StudioScreenState extends State<StudioScreen> {
   final history = <Creation>[];
   int tab = 0, mode = 0, credits = 50;
   bool busy = false, loading = true;
+  Timer? _statusTimer;
   static const types = ['Image', 'Video', 'Music'];
   static const icons = [Icons.image_outlined, Icons.movie_creation_outlined, Icons.music_note_outlined];
   SupabaseClient get db => Supabase.instance.client;
   @override
-  void initState() { super.initState(); loadHistory(); }
+  void initState() {
+    super.initState();
+    loadHistory();
+    // KIE continues running on the server if the app is backgrounded or closed.
+    // Refresh task states while the app is open and again whenever history loads.
+    _statusTimer = Timer.periodic(const Duration(seconds: 20), (_) => refreshTaskStatuses());
+  }
   @override
-  void dispose() { prompt.dispose(); super.dispose(); }
+  void dispose() { _statusTimer?.cancel(); prompt.dispose(); super.dispose(); }
   Future<void> loadHistory() async {
     try {
       final rows = await db.from('creations').select().order('created_at', ascending: false).limit(100);
       final items = (rows as List).map((r) => Creation(r['type'] as String, r['prompt'] as String, DateTime.parse(r['created_at'] as String), r['task_id'] as String, r['status'] as String)).toList();
       if (mounted) setState(() { history..clear()..addAll(items); loading = false; });
+      refreshTaskStatuses();
     } catch (e) {
       if (mounted) setState(() => loading = false);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not load history. Run supabase/schema.sql in Supabase SQL Editor. Details: $e')));
+    }
+  }
+  Future<void> refreshTaskStatuses() async {
+    if (!mounted || history.isEmpty) return;
+    final pending = history.where((item) =>
+      item.status == 'Submitted to KIE' || item.status == 'Processing').toList();
+    for (final item in pending) {
+      try {
+        final response = await http.get(Uri.parse(
+          '${gateway.replaceFirst(RegExp(r'/+    final text = prompt.text.trim();
+    if (text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Describe what you want to create first.'))); return; }
+    if (credits < 1) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Out of demo credits.'))); return; }
+    setState(() => busy = true);
+    try {
+      final response = await http.post(Uri.parse('${gateway.replaceFirst(RegExp(r'/+$'), '')}/api/generate'),
+        headers: {'Content-Type': 'application/json'}, body: jsonEncode({'type': types[mode].toLowerCase(), 'prompt': text})).timeout(const Duration(seconds: 45));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
+      final taskId = data['taskId']?.toString() ?? '';
+      if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
+      final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
+      await db.from('creations').insert({'user_id': db.auth.currentUser!.id, 'type': item.type, 'prompt': item.prompt, 'task_id': item.taskId, 'status': item.status});
+      if (!mounted) return;
+      setState(() { credits--; history.insert(0, item); tab = 1; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KIE accepted your generation task.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Multivexa AI', style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: ink,
+      actions: [Center(child: Text('$credits credits')), IconButton(tooltip: 'Sign out', onPressed: () => db.auth.signOut(), icon: const Icon(Icons.logout))]),
+    body: SafeArea(child: tab == 0 ? createView() : historyView()),
+    bottomNavigationBar: NavigationBar(backgroundColor: panel, selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v),
+      destinations: const [NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Create'), NavigationDestination(icon: Icon(Icons.history), label: 'History')]),
+  );
+  Widget createView() => ListView(padding: const EdgeInsets.all(20), children: [
+    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF30205B), Color(0xFF122D49)])),
+      child: const Text('MAKE SOMETHING\nUNFORGETTABLE', style: TextStyle(fontSize: 25, height: 1.15, fontWeight: FontWeight.w900))),
+    const SizedBox(height: 24), const Text('Choose a creation type', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
+    Row(children: List.generate(types.length, (i) => Expanded(child: Padding(padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
+      child: InkWell(onTap: () => setState(() => mode = i), child: Container(padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: mode == i ? violet.withValues(alpha: .22) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mode == i ? violet : Colors.white10)),
+        child: Column(children: [Icon(icons[i], color: cyan, size: 28), const SizedBox(height: 8), Text(types[i])])))))),
+    const SizedBox(height: 24), Text('Describe your ${types[mode].toLowerCase()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(height: 12),
+    TextField(controller: prompt, minLines: 4, maxLines: 7, decoration: InputDecoration(hintText: mode == 0 ? 'A cinematic futuristic city at sunset...' : mode == 1 ? 'A smooth camera move through a glowing city...' : 'An uplifting Afrobeats instrumental with warm guitar...', alignLabelWithHint: true)),
+    const SizedBox(height: 16), FilledButton.icon(onPressed: busy ? null : generate, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(busy ? 'Sending to KIE…' : 'Generate · 1 credit'), style: FilledButton.styleFrom(backgroundColor: violet, minimumSize: const Size.fromHeight(54))),
+    const SizedBox(height: 14), const Text('After KIE accepts a task, generation continues on the server even if you leave this screen or close the app. Reopen History to check its status. Credits are currently demo-only.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+  ]);
+  Widget historyView() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (history.isEmpty) return const Center(child: Text('Your saved creations will appear here.'));
+    return ListView.separated(padding: const EdgeInsets.all(20), itemCount: history.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) { final item = history[i]; final icon = item.type == 'Image' ? icons[0] : item.type == 'Video' ? icons[1] : icons[2];
+        return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
+          child: Row(children: [Icon(icon, color: cyan, size: 32), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${item.type} prompt', style: const TextStyle(fontWeight: FontWeight.w800)), Text(item.prompt, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+            Text('${item.status} · ${item.createdAt.toLocal()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+          ]))]));
+      });
+  }
+}
+), '')}/api/tasks/${Uri.encodeComponent(item.taskId)}',
+        )).timeout(const Duration(seconds: 12));
+        if (response.statusCode < 200 || response.statusCode >= 300) continue;
+        final payload = jsonDecode(response.body);
+        if (payload is! Map<String, dynamic>) continue;
+        final data = payload['data'] is Map<String, dynamic>
+            ? payload['data'] as Map<String, dynamic>
+            : payload;
+        final rawState = (data['state'] ?? data['status'] ?? data['taskStatus'] ?? '')
+            .toString().toLowerCase();
+        String? nextStatus;
+        if (['success', 'succeed', 'completed', 'complete'].contains(rawState)) {
+          nextStatus = 'Completed';
+        } else if (['fail', 'failed', 'error'].contains(rawState)) {
+          nextStatus = 'Failed';
+        } else if (rawState.isNotEmpty &&
+            !['waiting', 'queued', 'submitted', 'processing', 'running', 'pending'].contains(rawState)) {
+          nextStatus = rawState[0].toUpperCase() + rawState.substring(1);
+        } else if (['waiting', 'queued', 'submitted', 'processing', 'running', 'pending'].contains(rawState)) {
+          nextStatus = 'Processing';
+        }
+        if (nextStatus != null && mounted) {
+          final index = history.indexWhere((entry) => entry.taskId == item.taskId);
+          if (index >= 0 && history[index].status != nextStatus) {
+            setState(() {
+              history[index] = Creation(item.type, item.prompt, item.createdAt, item.taskId, nextStatus!);
+            });
+          }
+        }
+      } catch (_) {
+        // Temporary network failures must not interrupt other background tasks.
+      }
     }
   }
   Future<void> generate() async {
