@@ -563,6 +563,33 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       const SizedBox(height: 16),
     ],
     if (mode == 1) ...[
+      const Text('Generation mode', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: videoMode,
+        isExpanded: true,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.video_settings_outlined), labelText: 'Text, image or video input'),
+        items: const [
+          DropdownMenuItem(value: 'Text to video', child: Text('Text to video')),
+          DropdownMenuItem(value: 'Image to video', child: Text('Image to video — animate a still image')),
+          DropdownMenuItem(value: 'Video to video', child: Text('Video to video — transform a source clip')),
+        ],
+        onChanged: busy ? null : (value) { if (value != null) setState(() { videoMode = value; videoInputPath = null; videoInputName = null; videoInputSignedUrl = null; }); },
+      ),
+      if (videoMode != 'Text to video') ...[
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: busy ? null : chooseVideoInput,
+          icon: Icon(videoMode == 'Image to video' ? Icons.add_photo_alternate_outlined : Icons.video_file_outlined),
+          label: Text(videoInputName == null ? (videoMode == 'Image to video' ? 'Choose source image' : 'Choose source video') : 'Change source: $videoInputName', overflow: TextOverflow.ellipsis),
+        ),
+        if (videoMode == 'Image to video' && videoInputPath != null) ...[
+          const SizedBox(height: 8),
+          ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(videoInputPath!), height: 150, fit: BoxFit.contain)),
+        ],
+        Padding(padding: const EdgeInsets.only(top: 8), child: Text(videoMode == 'Image to video' ? 'Choose a still image and describe the motion you want.' : 'Choose a source clip and describe how you want it transformed. Provider support varies by selected model.', style: const TextStyle(color: Colors.white54, fontSize: 12))),
+      ],
+      const SizedBox(height: 14),
       const Text('Video model', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
