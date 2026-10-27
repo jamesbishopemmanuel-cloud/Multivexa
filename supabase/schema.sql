@@ -52,3 +52,6 @@ drop policy if exists "Users can read their own image inputs" on storage.objects
 create policy "Users can read their own image inputs"
 on storage.objects for select to authenticated
 using (bucket_id = 'image-inputs' and (storage.foldername(name))[1] = auth.uid()::text);
+
+
+insert into storage.buckets (id, name, public) values ('video-inputs', 'video-inputs', false) on conflict (id) do update set public = false;
