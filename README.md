@@ -14,6 +14,19 @@ The app supports Supabase email/password registration and sign-in, session resto
 ## KIE gateway deployment
 Deploy this repository to Render as a web service with **Root Directory** set to `server`. Set `KIE_API_KEY` as a Render secret environment variable and set `KIE_IMAGE_MODEL`, `KIE_VIDEO_MODEL`, and `KIE_MUSIC_MODEL` to valid model IDs enabled for your KIE account. Check `/health` after deployment. Never put the KIE key in the app.
 
+## Flutterwave credit top-ups
+1. Run the updated `supabase/schema.sql` in Supabase SQL Editor. It adds the wallet and idempotent payment ledger.
+2. In Render, set these server-only environment variables on the `server` service:
+   - `FLW_SECRET_KEY`: Flutterwave secret key (use test credentials first).
+   - `PUBLIC_API_URL`: the deployed HTTPS API origin, e.g. `https://your-service.onrender.com` (no trailing slash).
+   - `SUPABASE_URL`: the Supabase project URL.
+   - `SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable/anon key, used to validate signed-in users.
+   - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role key, server-side only; never add it to Flutter, GitHub commits, or client build variables.
+3. Deploy the server, then build the app with `MULTIVEXA_API_URL` set to the same HTTPS Render origin.
+4. The app offers ₦1,500 / 100 credits, ₦5,000 / 400 credits, and ₦10,000 / 900 credits. Payment is credited only after the backend verifies the Flutterwave transaction.
+
+Never commit or paste Flutterwave secret keys into the app or GitHub source. If a secret key has already been shared in a chat, rotate it in the Flutterwave dashboard before deploying.
+
 ## Build APK
 Add GitHub Actions variables:
 - `MULTIVEXA_API_URL`: deployed KIE gateway HTTPS URL
@@ -29,4 +42,4 @@ flutter build apk --release --dart-define=MULTIVEXA_API_URL=https://YOUR-SERVICE
 ```
 
 ## Limitations
-Credits are still demo-only and reset when the app restarts; enforce paid credits and quotas on the backend before production. A KIE task submission does not mean the media has finished rendering.
+Paid top-ups are stored in the Supabase wallet and loaded on app startup. Generation deductions are still demo-only and are not yet enforced server-side; enforce spending and quotas on the backend before production. A KIE task submission does not mean the media has finished rendering.
