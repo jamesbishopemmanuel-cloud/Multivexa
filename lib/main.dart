@@ -10,8 +10,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const gateway = String.fromEnvironment('MULTIVEXA_API_URL', defaultValue: 'http://10.0.2.2:8080');
-const sbUrl = String.fromEnvironment('SUPABASE_URL');
-const sbKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
+const sbUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://vihbsfrwnslnmheowkhy.supabase.co',
+);
+const sbKey = String.fromEnvironment(
+  'SUPABASE_PUBLISHABLE_KEY',
+  defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpaGJzZnJ3bnNsbm1oZW93a3kiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4ODAwMzIzOSwiZXhwIjoyMTAzNTc5MjM5fQ.eHAaAj7d7bhpFuBFinwxa80fW-QrjOpNwShSzSadhdA',
+);
 const ink = Color(0xFF0A0D18), panel = Color(0xFF151A2B), violet = Color(0xFF8B5CF6), cyan = Color(0xFF38BDF8);
 bool get sbConfigured => sbUrl.startsWith('https://') && sbKey.isNotEmpty;
 
