@@ -130,6 +130,23 @@ app.post('/api/payments/verify', async (req, res) => {
   }
 });
 
+app.get('/api/wallet/balance', async (req, res) => {
+  try {
+    const user = await authenticateSupabase(req);
+    if (!user) return res.status(401).json({ error: 'Sign in to view your wallet.' });
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return res.status(503).json({ error: 'Supabase wallet server credentials are not configured.' });
+    const url = new URL(`${SUPABASE_URL}/rest/v1/wallet_balances`);
+    url.searchParams.set('select', 'credits');
+    url.searchParams.set('user_id', `eq.${user.id}`);
+    const response = await fetch(url, { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } });
+    const rows = await response.json().catch(() => []);
+    if (!response.ok) return res.status(502).json({ error: 'Could not load wallet balance.' });
+    res.json({ credits: Array.isArray(rows) && rows.length ? Number(rows[0].credits) : 0 });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not load wallet.' });
+  }
+});
+
 app.get('/api/options', (_req, res) => res.json({
   image: [...allowedModels.image], video: [...allowedModels.video], music: [...allowedModels.music],
 }));
