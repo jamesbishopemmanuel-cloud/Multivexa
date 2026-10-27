@@ -1,28 +1,32 @@
 # Multivexa AI
 
-An Android-first creative studio connecting image, video, and music generation to KIE.
+Android creative studio using KIE for image/video/music generation and Supabase for authentication and persistent creation history.
 
-## Deploy the KIE gateway
+## Supabase setup
+1. In Supabase, copy your **Project URL** and **publishable key** (legacy anon key is also client-safe).
+2. In GitHub **Settings → Secrets and variables → Actions → Variables**, add `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+3. Run `supabase/schema.sql` in Supabase **SQL Editor** to create the history table and Row Level Security policies.
+4. Ensure Email is enabled under Supabase **Authentication → Providers**. If email confirmation is enabled, new users must confirm their email before signing in.
+5. Never put a Supabase secret/service-role key in the mobile app or repository. The app uses only the publishable key and relies on RLS.
 
-1. Create a web service on Render from this repository.
-2. Set **Root Directory** to `server` and use the included Dockerfile.
-3. Add `KIE_API_KEY` as a secret environment variable in Render. Never put this key in Flutter code or GitHub.
-4. Set `KIE_IMAGE_MODEL`, `KIE_VIDEO_MODEL`, and `KIE_MUSIC_MODEL` to model IDs enabled in your KIE account. The example values in `.env.example` are placeholders and may need to be changed to the exact model IDs shown by KIE.
-5. After deployment, check `https://YOUR-SERVICE.onrender.com/health`. It should return JSON showing the gateway is online.
+The app supports Supabase email/password registration and sign-in, session restoration, and per-user saved generation history.
 
-The gateway provides `POST /api/generate` and `GET /api/tasks/:taskId`. The API key remains server-side. KIE usage may incur charges according to your KIE plan.
+## KIE gateway deployment
+Deploy this repository to Render as a web service with **Root Directory** set to `server`. Set `KIE_API_KEY` as a Render secret environment variable and set `KIE_IMAGE_MODEL`, `KIE_VIDEO_MODEL`, and `KIE_MUSIC_MODEL` to valid model IDs enabled for your KIE account. Check `/health` after deployment. Never put the KIE key in the app.
 
-## Build the Android APK
+## Build APK
+Add GitHub Actions variables:
+- `MULTIVEXA_API_URL`: deployed KIE gateway HTTPS URL
+- `SUPABASE_URL`: Supabase project URL
+- `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable/anon key
 
-GitHub Actions builds a release APK and uploads it as the `multivexa-android-release` artifact. For generation to work on a real phone, build with your deployed gateway URL:
+Push to `main` or manually run **Actions → Build Multivexa Android APK**. The workflow builds and uploads `multivexa-android-release`.
 
+Local build:
 ```sh
 flutter pub get
-flutter build apk --release --dart-define=MULTIVEXA_API_URL=https://YOUR-SERVICE.onrender.com
+flutter build apk --release --dart-define=MULTIVEXA_API_URL=https://YOUR-SERVICE.onrender.com --dart-define=SUPABASE_URL=https://YOUR-PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
 
-To use this URL in GitHub Actions, add a repository variable named `MULTIVEXA_API_URL` containing the HTTPS gateway URL, then pass it to the build command as `--dart-define=MULTIVEXA_API_URL=${{ vars.MULTIVEXA_API_URL }}`.
-
-## Current limitations
-
-The sign-in/register page is still a prototype, and credits/history are stored in memory only. Production use needs real authentication, persistent user records, server-side credit validation, and rate limiting. A successful task submission means KIE accepted a job; it does not mean the media has finished rendering yet.
+## Limitations
+Credits are still demo-only and reset when the app restarts; enforce paid credits and quotas on the backend before production. A KIE task submission does not mean the media has finished rendering.
