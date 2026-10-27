@@ -160,8 +160,6 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     'Architectural Visualization', 'Watercolor Animation', 'Comic Book'
   ];
   static const videoRatios = ['16:9', '9:16', '1:1'];
-  static const musicModels = <String, String>{'Suno V6': 'V6', 'Suno V6 Mini': 'V6_MINI', 'Suno V6 Wild': 'V6_WILD'};
-  static const musicStyles = ['Afrobeats', 'Afro-pop', 'Amapiano', 'R&B', 'Pop', 'Hip-hop', 'Rap', 'Gospel', 'Highlife', 'Reggae', 'Dancehall', 'EDM', 'House', 'Jazz', 'Soul', 'Rock', 'Country', 'Classical', 'Cinematic', 'Lo-fi', 'Acoustic', 'Orchestral', 'Ambient', 'Drill', 'Afro-fusion', 'Funk'];
   static const musicModels = <String, String>{
     'Suno V6': 'V6', 'Suno V6 Mini': 'V6_MINI', 'Suno V6 Wild': 'V6_WILD',
   };
