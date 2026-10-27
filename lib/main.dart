@@ -104,9 +104,10 @@ class _AuthScreenState extends State<AuthScreen> {
 }
 
 class Creation {
-  Creation(this.type, this.prompt, this.createdAt, this.taskId, this.status);
+  Creation(this.type, this.prompt, this.createdAt, this.taskId, this.status, {this.progress = 1});
   final String type, prompt, taskId, status;
   final DateTime createdAt;
+  final int progress;
 }
 class StudioScreen extends StatefulWidget {
   const StudioScreen({super.key});
@@ -174,6 +175,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       ? ['1K']
       : imageRatio == '1:1' ? ['1K', '2K'] : ['1K', '2K', '4K'];
   Timer? _statusTimer;
+  Timer? _progressTimer;
   static const types = ['Image', 'Video', 'Music'];
   static const icons = [Icons.image_outlined, Icons.movie_creation_outlined, Icons.music_note_outlined];
   SupabaseClient get db => Supabase.instance.client;
@@ -184,7 +186,8 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     loadHistory();
     // KIE continues running on the server if the app is backgrounded or closed.
     // Refresh task states while the app is open and again whenever history loads.
-    _statusTimer = Timer.periodic(const Duration(seconds: 20), (_) => refreshTaskStatuses());
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) => refreshTaskStatuses());
+    _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) => updateEstimatedProgress());
   }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -194,7 +197,20 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
     }
   }
   @override
-  void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); prompt.dispose(); audioRecorder.dispose(); super.dispose(); }
+  void dispose() { WidgetsBinding.instance.removeObserver(this); _statusTimer?.cancel(); _progressTimer?.cancel(); prompt.dispose(); audioRecorder.dispose(); super.dispose(); }
+
+  void updateEstimatedProgress() {
+    if (!mounted || history.isEmpty) return;
+    var changed = false;
+    final updated = history.map((item) {
+      if (item.status == 'Completed') return Creation(item.type, item.prompt, item.createdAt, item.taskId, item.status, progress: 100);
+      if (item.status == 'Failed') return item;
+      final estimate = (1 + DateTime.now().difference(item.createdAt).inSeconds * 0.45).round().clamp(1, 95);
+      if (estimate != item.progress) changed = true;
+      return Creation(item.type, item.prompt, item.createdAt, item.taskId, item.status, progress: estimate);
+    }).toList();
+    if (changed) setState(() { history..clear()..addAll(updated); });
+  }
 
   Future<void> chooseImageInput() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: false);
@@ -286,7 +302,7 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   Future<void> loadHistory() async {
     try {
       final rows = await db.from('creations').select().order('created_at', ascending: false).limit(100);
-      final items = (rows as List).map((r) => Creation(r['type'] as String, r['prompt'] as String, DateTime.parse(r['created_at'] as String), r['task_id'] as String, r['status'] as String)).toList();
+      final items = (rows as List).map((r) { final created = DateTime.parse(r['created_at'] as String); final status = r['status'] as String; final elapsed = DateTime.now().difference(created).inSeconds; final progress = status == 'Completed' ? 100 : status == 'Failed' ? 0 : (1 + elapsed * 0.45).round().clamp(1, 95); return Creation(r['type'] as String, r['prompt'] as String, created, r['task_id'] as String, status, progress: progress); }).toList();
       if (mounted) setState(() { history..clear()..addAll(items); loading = false; });
       refreshTaskStatuses();
     } catch (e) {
