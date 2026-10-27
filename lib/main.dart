@@ -205,8 +205,18 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
   }
   Future<void> generate() async {
     final text = prompt.text.trim();
-    if (text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Describe what you want to create first.'))); return; }
-    if (credits < 1) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Out of demo credits.'))); return; }
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Describe what you want to create first.')),
+      );
+      return;
+    }
+    if (credits < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Out of demo credits.')),
+      );
+      return;
+    }
     setState(() => busy = true);
     try {
       final effectivePrompt = mode == 0
@@ -221,20 +231,44 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
             'resolution': imageResolution,
           },
       };
+      final base = gateway.replaceFirst(RegExp(r'/+$'), '');
       final response = await http.post(
-        Uri.parse('${gateway.replaceFirst(RegExp(r'/+
+        Uri.parse('$base/api/generate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 45));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(data['error']?.toString() ?? 'KIE request failed (${response.statusCode})');
+      }
       final taskId = data['taskId']?.toString() ?? '';
       if (taskId.isEmpty) throw Exception('KIE did not return a task ID.');
       final item = Creation(types[mode], text, DateTime.now(), taskId, 'Submitted to KIE');
-      await db.from('creations').insert({'user_id': db.auth.currentUser!.id, 'type': item.type, 'prompt': item.prompt, 'task_id': item.taskId, 'status': item.status});
+      await db.from('creations').insert({
+        'user_id': db.auth.currentUser!.id,
+        'type': item.type,
+        'prompt': item.prompt,
+        'task_id': item.taskId,
+        'status': item.status,
+      });
       if (!mounted) return;
-      setState(() { credits--; history.insert(0, item); tab = 1; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KIE accepted your generation task.')));
+      setState(() {
+        credits--;
+        history.insert(0, item);
+        tab = 1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('KIE accepted your generation task.')),
+      );
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generation or history save failed: $e')));
-    } finally { if (mounted) setState(() => busy = false); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Generation or history save failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
   @override
   Widget build(BuildContext context) => Scaffold(
