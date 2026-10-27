@@ -10,6 +10,8 @@ dependencies:
   http: ^1.2.2
   supabase_flutter: ^2.9.0
   file_picker: ^10.3.3
+  record: ^6.1.2
+  path_provider: ^2.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
