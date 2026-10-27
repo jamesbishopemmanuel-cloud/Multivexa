@@ -22,3 +22,18 @@ create policy "Users can update their own creations"
 on public.creations for update to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+
+insert into storage.buckets (id, name, public)
+values ('music-inputs', 'music-inputs', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Users can upload their own music inputs" on storage.objects;
+create policy "Users can upload their own music inputs"
+on storage.objects for insert to authenticated
+with check (bucket_id = 'music-inputs' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "Users can read their own music inputs" on storage.objects;
+create policy "Users can read their own music inputs"
+on storage.objects for select to authenticated
+using (bucket_id = 'music-inputs' and (storage.foldername(name))[1] = auth.uid()::text);
