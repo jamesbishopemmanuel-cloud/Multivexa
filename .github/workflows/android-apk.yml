@@ -33,7 +33,14 @@ jobs:
         run: flutter analyze
 
       - name: Build universal release APK
-        run: flutter build apk --release
+        env:
+          MULTIVEXA_API_URL: ${{ vars.MULTIVEXA_API_URL }}
+        run: |
+          if [ -n "$MULTIVEXA_API_URL" ]; then
+            flutter build apk --release --dart-define=MULTIVEXA_API_URL="$MULTIVEXA_API_URL"
+          else
+            flutter build apk --release
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
