@@ -266,8 +266,9 @@ class _StudioScreenState extends State<StudioScreen> with WidgetsBindingObserver
       const Text('Buy AI credits', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 8),
       const Text('Secure checkout powered by Flutterwave. Prices are in Nigerian naira.', style: TextStyle(color: Colors.white70)), const SizedBox(height: 16),
       _packButton(sheetContext, 'starter', 'Starter', '₦1,500', '100 credits'),
-      _packButton(sheetContext, 'creator', 'Creator', '₦5,000', '400 credits'),
-      _packButton(sheetContext, 'studio', 'Studio', '₦10,000', '900 credits'),
+      _packButton(sheetContext, 'creator', 'Creator', '₦5,000', '300 credits'),
+      _packButton(sheetContext, 'studio', 'Studio', '₦10,000', '800 credits'),
+      _packButton(sheetContext, 'mega', 'Mega', '₦13,600', '1,000 credits'),
       if (_pendingPaymentRef != null) OutlinedButton.icon(onPressed: paymentBusy ? null : () { Navigator.pop(sheetContext); verifyTopUp(); }, icon: const Icon(Icons.verified_outlined), label: const Text('Verify previous payment')),
     ]))));
   }
