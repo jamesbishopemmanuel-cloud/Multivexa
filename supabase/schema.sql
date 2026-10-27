@@ -15,3 +15,10 @@ drop policy if exists "Users can read their own creations" on public.creations;
 create policy "Users can read their own creations" on public.creations for select to authenticated using (auth.uid() = user_id);
 drop policy if exists "Users can insert their own creations" on public.creations;
 create policy "Users can insert their own creations" on public.creations for insert to authenticated with check (auth.uid() = user_id);
+
+grant update on public.creations to authenticated;
+drop policy if exists "Users can update their own creations" on public.creations;
+create policy "Users can update their own creations"
+on public.creations for update to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
