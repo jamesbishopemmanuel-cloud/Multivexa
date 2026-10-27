@@ -9,11 +9,30 @@ const PORT = Number(process.env.PORT || 8080);
 const KIE_API_KEY = process.env.KIE_API_KEY;
 const KIE_BASE_URL = (process.env.KIE_BASE_URL || 'https://api.kie.ai/api/v1').replace(/\/$/, '');
 
-const models = {
-  image: process.env.KIE_IMAGE_MODEL || 'gpt-image-2-text-to-image',
-  video: process.env.KIE_VIDEO_MODEL || 'kling-2.6/text-to-video',
-  music: process.env.KIE_MUSIC_MODEL || 'sonu',
+const defaultModels = {
+  image: 'gpt-image-2-text-to-image',
+  video: 'kling-2.6/text-to-video',
+  music: 'sonu',
 };
+const allowedModels = {
+  image: new Set([
+    'gpt-image-2-text-to-image', 'gpt-image-2-5-flare-text-to-image',
+    'nano-banana-2', 'nano-banana-2-1',
+  ]),
+  video: new Set([
+    'kling-3.0/video', 'bytedance/seedance-2-5', 'runway', 'kling-2.6/text-to-video',
+  ]),
+  music: new Set([process.env.KIE_MUSIC_MODEL || 'sonu']),
+};
+const models = {
+  image: process.env.KIE_IMAGE_MODEL || defaultModels.image,
+  video: process.env.KIE_VIDEO_MODEL || defaultModels.video,
+  music: process.env.KIE_MUSIC_MODEL || defaultModels.music,
+};
+
+app.get('/api/options', (_req, res) => res.json({
+  image: [...allowedModels.image], video: [...allowedModels.video], music: [...allowedModels.music],
+}));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'Multivexa KIE gateway' }));
 
@@ -24,7 +43,11 @@ app.post('/api/generate', async (req, res) => {
     if (!['image', 'video', 'music'].includes(type)) return res.status(400).json({ error: 'type must be image, video, or music.' });
     if (typeof prompt !== 'string' || !prompt.trim()) return res.status(400).json({ error: 'A non-empty prompt is required.' });
 
-    const model = models[type];
+    const requestedModel = typeof req.body.model === 'string' ? req.body.model : models[type];
+    if (!allowedModels[type].has(requestedModel)) {
+      return res.status(400).json({ error: `Unsupported ${type} model. Choose a model listed by /api/options.` });
+    }
+    const model = requestedModel;
     const taskInput = { ...input, prompt: prompt.trim() };
     const response = await fetch(`${KIE_BASE_URL}/jobs/createTask`, {
       method: 'POST',
