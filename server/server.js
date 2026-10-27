@@ -17,10 +17,11 @@ const defaultModels = {
 const allowedModels = {
   image: new Set([
     'gpt-image-2-text-to-image', 'gpt-image-2-5-flare-text-to-image',
-    'nano-banana-2', 'nano-banana-2-1',
+    'nano-banana-2', 'nano-banana-2-1', ...(process.env.KIE_IMAGE_MODEL ? [process.env.KIE_IMAGE_MODEL] : []),
   ]),
   video: new Set([
     'kling-3.0/video', 'bytedance/seedance-2-5', 'runway', 'kling-2.6/text-to-video',
+    ...(process.env.KIE_VIDEO_MODEL ? [process.env.KIE_VIDEO_MODEL] : []),
   ]),
   music: new Set([process.env.KIE_MUSIC_MODEL || 'sonu']),
 };
@@ -43,7 +44,7 @@ app.post('/api/generate', async (req, res) => {
     if (!['image', 'video', 'music'].includes(type)) return res.status(400).json({ error: 'type must be image, video, or music.' });
     if (typeof prompt !== 'string' || !prompt.trim()) return res.status(400).json({ error: 'A non-empty prompt is required.' });
 
-    const requestedModel = typeof req.body.model === 'string' ? req.body.model : models[type];
+    const requestedModel = typeof req.body?.model === 'string' ? req.body.model : models[type];
     if (!allowedModels[type].has(requestedModel)) {
       return res.status(400).json({ error: `Unsupported ${type} model. Choose a model listed by /api/options.` });
     }
